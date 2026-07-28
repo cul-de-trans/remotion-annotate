@@ -17,6 +17,7 @@ Read the user's visual annotations and apply each one to the source code.
    - `timeRange` — applies to a span of the video: `target.frame` → `target.toFrame`. Typical asks: retime a `<Sequence>`, add/remove something during that span, change pacing.
    - `region` — the user drew a box on the canvas: `target.region` is `{xPct, yPct, wPct, hPct}` as percentages of the composition area, plus `target.frame`. Typical ask: create/place a new element there. Convert percentages to the composition's pixel size.
    - `multi` — one instruction for several elements: `targets[]` each with `loc`/`selector`/`text`.
+   - `scene` — the user clicked a whole sequence in the timeline: `target.name` is the `<Sequence>`/`<Composition>` display name and `target.frame` → `target.toFrame` is its exact span. Locate the sequence by name (or by the code that renders that frame range) and apply the change there.
 
 3. **Apply each annotation**
    - Open the file at `target.loc` and find the element at that line (the line points at the opening tag; if the file shifted, locate it by `component` + `text`)

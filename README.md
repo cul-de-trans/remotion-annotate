@@ -11,6 +11,7 @@ spirit of [Agentation](https://agentation.com). Select any element in the previe
 - **Edit text in place**: pencil on a text element, type, Enter. Direct to source.
 - **Annotate for your agent**: click, write what to change, copy a clean markdown block, paste into Claude Code / Codex.
 - **Frame-aware**: annotations capture the current frame; click to seek back to that moment.
+- **Comment on timeline scenes**: click any sequence block in Studio's timeline to annotate a whole scene. The annotation captures its name and exact frame span.
 - **Region + multi-select**: draw a box on an empty area ("write hello here"), or shift-click several elements to annotate or delete them at once.
 
 It runs a small in-process bridge (so it never goes "offline" while Studio is up) and shows a green/red status dot.

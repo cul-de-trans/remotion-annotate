@@ -103,6 +103,12 @@
         `- **Type:** time range (applies to this span of the video)`,
         `- **Range:** frames ${a.target.frame}–${a.target.toFrame}`].join("\n");
     }
+    if (a.kind === "scene") {
+      const t = a.target, L = [`### ${a.message}`, "", `- **Type:** timeline scene / sequence`,
+        `- **Scene:** "${t.name}"${t.sceneType && t.sceneType !== "sequence" ? ` (${t.sceneType})` : ""}`];
+      if (typeof t.frame === "number") L.push(`- **Spans:** frames ${t.frame}–${t.toFrame}`);
+      return L.join("\n");
+    }
     if (a.kind === "multi") {
       const L = [`### ${a.message}`, "", `- **Type:** applies to ${a.targets?.length || 0} elements:`];
       (a.targets || []).forEach((t) => L.push(`  - \`${t.loc || t.selector}\`${t.text ? ` — "${t.text}"` : ""}`));
@@ -131,7 +137,7 @@
     settings: false, marker: "#3b82f6", clearOnSend: false, block: true, components: false,
     editPick: null, editOrig: "", propsPick: null,
     multi: [], multiPending: false, regionMode: false, regionDraw: null, regionPending: null,
-    editAnnId: null, range: null, rangePending: null,
+    editAnnId: null, range: null, rangePending: null, scenePending: null,
   };
 
   // ---------- shadow UI ----------
@@ -353,6 +359,20 @@
       ["hl", "tip", "plus", "pen", "props"].forEach((id) => $(id).classList.add("hide"));
       return;
     }
+    if (pick.isScene) {
+      const r = pick.rect;
+      $("hl").classList.remove("hide"); place($("hl"), r);
+      ["pen", "props"].forEach((id) => $(id).classList.add("hide"));
+      const tip = $("tip"); tip.classList.remove("hide");
+      const rng = pick.scene.from != null ? ` · ◷ ${pick.scene.from}–${pick.scene.to}` : "";
+      tip.innerHTML = `<b>scene:</b> "${(pick.scene.name || "").replace(/</g, "&lt;")}"${rng}`;
+      tip.style.left = Math.min(r.left, innerWidth - tip.offsetWidth - 12) + "px";
+      tip.style.top = Math.max(8, r.top - 38) + "px";
+      const b = $("plus"); b.classList.remove("hide");
+      b.style.left = r.left + r.width / 2 - 15 + "px";
+      b.style.top = r.top + r.height / 2 - 15 + "px";
+      return;
+    }
     const r = pick.rect;
     $("hl").classList.remove("hide"); place($("hl"), r);
     const tip = $("tip"); tip.classList.remove("hide");
@@ -383,7 +403,18 @@
     $("crumb").innerHTML = `<b>${friendly(pick.el)}:</b> ${pick.info.loc ? pick.info.loc.split("/").pop() : '"' + (pick.info.text || "").slice(0, 28) + '…"'}`;
     $("ta").value = ""; setTimeout(() => $("ta").focus(), 0);
   };
-  const closePanel = () => { S.selected = null; S.regionPending = null; S.multiPending = false; S.editAnnId = null; S.rangePending = null; stopBand(); $("panel").classList.add("hide"); };
+  const openScenePanel = (pick) => {
+    S.scenePending = pick.scene;
+    closeProps();
+    ["plus", "pen", "props"].forEach((id) => $(id).classList.add("hide"));
+    const p = $("panel"); p.classList.remove("hide");
+    p.style.left = Math.min(pick.rect.left, innerWidth - 350) + "px";
+    p.style.top = Math.max(12, pick.rect.top - 190) + "px"; // timeline sits low: open above the block
+    const rng = pick.scene.from != null ? ` <span style="color:#6b7280">(frames ${pick.scene.from}–${pick.scene.to})</span>` : "";
+    $("crumb").innerHTML = `<b>Scene:</b> "${(pick.scene.name || "").replace(/</g, "&lt;")}"${rng}`;
+    $("ta").value = ""; setTimeout(() => $("ta").focus(), 0);
+  };
+  const closePanel = () => { S.selected = null; S.regionPending = null; S.multiPending = false; S.editAnnId = null; S.rangePending = null; S.scenePending = null; stopBand(); $("panel").classList.add("hide"); };
   const renderList = () => {
     $("side").classList.toggle("hide", S.annotations.length === 0 || !S.open);
     $("list").innerHTML = S.annotations.map((a) => {
@@ -433,22 +464,58 @@
     if (S.hasLoc) return target.closest("[data-loc]") || null;
     return target;
   };
+  // Studio timeline blocks carry [data-timeline-marquee-item] + a title (the
+  // sequence displayName). The block's React fiber holds the sequence object
+  // `s` (with from/duration), so we read the exact frame span from it.
+  const findSeqInfo = (el) => {
+    let f = getFiber(el);
+    while (f) {
+      const p = f.memoizedProps;
+      if (p && p.s && typeof p.s.from === "number") {
+        const s = p.s;
+        const dur = typeof p.displayDurationInFrames === "number" ? p.displayDurationInFrames : s.duration;
+        return { name: s.displayName || el.getAttribute("title") || "scene",
+          from: s.from, to: s.from + (dur || 1) - 1, type: s.type || "sequence" };
+      }
+      f = f.return;
+    }
+    const t = el.getAttribute("title");
+    return t ? { name: t, from: null, to: null, type: "sequence" } : null;
+  };
+  const pickScene = (target) => {
+    if (!target || host.contains(target) || !target.closest) return null;
+    const el = target.closest("[data-timeline-marquee-item]");
+    if (!el) return null;
+    const scene = findSeqInfo(el);
+    if (!scene) return null;
+    return { el, isScene: true, rect: el.getBoundingClientRect(), scene };
+  };
   let raf = 0;
   const onMove = (e) => {
-    if (!S.active || S.selected || S.editPick || S.propsPick || S.regionMode) return;
+    if (!S.active || S.selected || S.scenePending || S.editPick || S.propsPick || S.regionMode) return;
     if (raf) return;
     raf = requestAnimationFrame(() => {
       raf = 0;
+      const sc = pickScene(e.target);
+      if (sc) {                              // hovering a timeline scene block
+        if (S.hover && S.hover.isScene && S.hover.el === sc.el) return;
+        S.hover = sc; showHover(sc); return;
+      }
       const el = pickFrom(e.target);
       if (el === undefined) return;          // over our UI, keep
-      if (!el) return;                       // empty area, keep last
-      if (S.hover && S.hover.el === el) return;
+      if (!el) { if (S.hover && S.hover.isScene) { S.hover = null; showHover(null); } return; } // left a scene → clear
+      if (S.hover && !S.hover.isScene && S.hover.el === el) return;
       S.hover = { el, rect: el.getBoundingClientRect(), info: resolve(el) };
       showHover(S.hover);
     });
   };
   const onClick = (e) => {
     if (!S.active || S.editPick || S.propsPick || S.regionMode) return; // region uses drag; panels block clicks
+    const sc = pickScene(e.target);
+    if (sc) {                                // comment on a timeline scene
+      if (S.block) { e.preventDefault(); e.stopPropagation(); }
+      S.hover = sc; showHover(sc); openScenePanel(sc); return;
+    }
     const el = pickFrom(e.target);
     if (el === undefined || !el) return;
     if (S.block) { e.preventDefault(); e.stopPropagation(); }
@@ -480,6 +547,13 @@
       S.annotations.push({ id: "a" + Date.now().toString(36), kind: "multi", createdAt: Date.now(), message: msg,
         targets: S.multi.map((p) => p.info), target: { loc: null, selector: `${S.multi.length} elements`, tag: "multi", frame: raFrame() } });
       renderList(); persist(); closePanel(); clearMulti(); return;
+    }
+    if (S.scenePending) {
+      const sc = S.scenePending;
+      S.annotations.push({ id: "a" + Date.now().toString(36), kind: "scene", createdAt: Date.now(), message: msg,
+        target: { loc: null, selector: `scene: ${sc.name}`, tag: "scene", name: sc.name, sceneType: sc.type,
+          ...(sc.from != null ? { frame: sc.from, toFrame: sc.to } : {}) } });
+      renderList(); persist(); closePanel(); return;
     }
     if (!S.selected) return;
     S.annotations.push({ id: "a" + Date.now().toString(36), kind: "feedback", createdAt: Date.now(),
@@ -706,7 +780,7 @@
   const closeProps = () => { S.propsPick = null; $("ppanel").classList.add("hide"); };
 
   // ---------- wiring ----------
-  $("plus").onclick = () => S.hover && openPanel(S.hover);
+  $("plus").onclick = () => S.hover && (S.hover.isScene ? openScenePanel(S.hover) : openPanel(S.hover));
   $("pen").onclick = () => S.hover && openEdit(S.hover);
   $("props").onclick = () => S.hover && openProps(S.hover);
   $("pclose").onclick = closeProps;
@@ -930,7 +1004,7 @@
     } else if (e.key === "Escape" && S.open) {
       e.stopImmediatePropagation();
       if (S.range) { cancelRange(); stopBand(); }
-      else if (S.selected) closePanel();
+      else if (S.selected || S.scenePending) closePanel();
       else toggleOpen(false);
     }
   };
