@@ -35,5 +35,6 @@ Read the user's visual annotations and apply each one to the source code.
 ## Notes
 
 - Line/col in `loc` are stamped at build time; if the file was edited since, trust `component` + `text` over the raw line number
+- Every annotation carries `composition` (the Studio route id, e.g. `Film`); use it to find the right `<Composition>` when the project has several
 - `frame` numbers are in the composition's fps (read it from the `<Composition>` definition if you need seconds)
 - Do not re-format unrelated code; make surgical edits

@@ -74,10 +74,11 @@
   };
   // Current Studio frame, read from the frame Remotion persists to localStorage.
   // Only updated while paused (fine for annotating); returns null if unavailable.
+  const raComp = () => decodeURIComponent((location.pathname || "").replace(/^\//, "").split("/")[0] || "") || null;
   const raFrame = () => {
     try {
       const all = JSON.parse(localStorage.getItem("remotion.time-all") || "{}");
-      const comp = decodeURIComponent((location.pathname || "").replace(/^\//, ""));
+      const comp = raComp();
       const f = comp in all ? all[comp] : Object.values(all)[0];
       return typeof f === "number" ? Math.round(f) : null;
     } catch {
@@ -88,7 +89,7 @@
     const r = el.getBoundingClientRect();
     return { loc: getDataLoc(el), component: componentName(el), chain: chain(el),
       selector: cssPath(el), tag: el.tagName.toLowerCase(), text: textSnip(el), styles: computed(el),
-      frame: raFrame(),
+      frame: raFrame(), composition: raComp(),
       rect: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) } };
   };
   const mdFor = (a) => {
@@ -455,7 +456,7 @@
         throw e;
       });
   const persist = () => fetch(BRIDGE + "/annotations", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ version: "1.0", composition: document.title, annotations: S.annotations }, null, 2) }).catch(() => {});
+    body: JSON.stringify({ version: "1.0", composition: raComp() || document.title, annotations: S.annotations }, null, 2) }).catch(() => {});
   fetch(BRIDGE + "/annotations").then((r) => r.json()).then((d) => { if (d?.annotations) { S.annotations = d.annotations; renderList(); } }).catch(() => {});
 
   // ---------- pointer ----------
@@ -534,29 +535,29 @@
       renderList(); persist(); closePanel(); return;
     }
     if (S.rangePending) {
-      S.annotations.push({ id: "a" + Date.now().toString(36), kind: "timeRange", createdAt: Date.now(), message: msg,
+      S.annotations.push({ id: "a" + Date.now().toString(36), composition: raComp(), kind: "timeRange", createdAt: Date.now(), message: msg,
         target: { loc: null, selector: `frames ${S.rangePending.from}-${S.rangePending.to}`, tag: "range", frame: S.rangePending.from, toFrame: S.rangePending.to } });
       renderList(); persist(); closePanel(); return;
     }
     if (S.regionPending) {
-      S.annotations.push({ id: "a" + Date.now().toString(36), kind: "region", createdAt: Date.now(), message: msg,
+      S.annotations.push({ id: "a" + Date.now().toString(36), composition: raComp(), kind: "region", createdAt: Date.now(), message: msg,
         target: { region: S.regionPending.rect, viewport: S.regionPending.viewport, frame: S.regionPending.frame, loc: null, selector: "(region)", tag: "region" } });
       renderList(); persist(); closePanel(); return;
     }
     if (S.multiPending) {
-      S.annotations.push({ id: "a" + Date.now().toString(36), kind: "multi", createdAt: Date.now(), message: msg,
+      S.annotations.push({ id: "a" + Date.now().toString(36), composition: raComp(), kind: "multi", createdAt: Date.now(), message: msg,
         targets: S.multi.map((p) => p.info), target: { loc: null, selector: `${S.multi.length} elements`, tag: "multi", frame: raFrame() } });
       renderList(); persist(); closePanel(); clearMulti(); return;
     }
     if (S.scenePending) {
       const sc = S.scenePending;
-      S.annotations.push({ id: "a" + Date.now().toString(36), kind: "scene", createdAt: Date.now(), message: msg,
+      S.annotations.push({ id: "a" + Date.now().toString(36), composition: raComp(), kind: "scene", createdAt: Date.now(), message: msg,
         target: { loc: null, selector: `scene: ${sc.name}`, tag: "scene", name: sc.name, sceneType: sc.type,
           ...(sc.from != null ? { frame: sc.from, toFrame: sc.to } : {}) } });
       renderList(); persist(); closePanel(); return;
     }
     if (!S.selected) return;
-    S.annotations.push({ id: "a" + Date.now().toString(36), kind: "feedback", createdAt: Date.now(),
+    S.annotations.push({ id: "a" + Date.now().toString(36), composition: raComp(), kind: "feedback", createdAt: Date.now(),
       message: msg, target: S.selected.info });
     renderList(); persist(); closePanel();
   };
